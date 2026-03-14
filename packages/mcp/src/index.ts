@@ -2,18 +2,53 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { DAEMON_BASE_URL, COMMAND_TIMEOUT, generateId } from "@bb-browser/shared";
 import type { Request, Response } from "@bb-browser/shared";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
-const SETUP_HINT = [
+const EXT_HINT = [
+  "Chrome extension not connected.",
   "",
-  "Setup: 1) npm install -g bb-browser",
-  "       2) chrome://extensions/ → Developer Mode → Load unpacked → node_modules/bb-browser/extension/",
-  "       3) bb-browser daemon",
-  "       4) bb-browser status",
-  "Releases: https://github.com/epiral/bb-browser/releases",
+  "Load the extension:",
+  "  1. Open chrome://extensions/ → Enable Developer Mode",
+  "  2. Click \"Load unpacked\" → select node_modules/bb-browser/extension/",
+  "  3. Or download from: https://github.com/epiral/bb-browser/releases",
 ].join("\n");
 
+function getDaemonPath(): string {
+  const currentDir = dirname(fileURLToPath(import.meta.url));
+  const sameDirPath = resolve(currentDir, "daemon.js");
+  if (existsSync(sameDirPath)) return sameDirPath;
+  return resolve(currentDir, "../../daemon/dist/index.js");
+}
+
+async function isDaemonRunning(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${DAEMON_BASE_URL}/status`, { signal: controller.signal });
+    clearTimeout(t);
+    return res.ok;
+  } catch { return false; }
+}
+
+async function ensureDaemon(): Promise<void> {
+  if (await isDaemonRunning()) return;
+  const child = spawn(process.execPath, [getDaemonPath()], {
+    detached: true, stdio: "ignore", env: { ...process.env },
+  });
+  child.unref();
+  // wait up to 5s
+  for (let i = 0; i < 25; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    if (await isDaemonRunning()) return;
+  }
+}
+
 async function sendCommand(request: Request): Promise<Response> {
+  await ensureDaemon();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), COMMAND_TIMEOUT);
   try {
@@ -25,12 +60,12 @@ async function sendCommand(request: Request): Promise<Response> {
     });
     clearTimeout(timeoutId);
     if (response.status === 503) {
-      return { id: request.id, success: false, error: "Chrome extension not connected." + SETUP_HINT };
+      return { id: request.id, success: false, error: EXT_HINT };
     }
     return (await response.json()) as Response;
   } catch {
     clearTimeout(timeoutId);
-    return { id: request.id, success: false, error: "Cannot connect to daemon. Is it running? Run: bb-browser daemon" + SETUP_HINT };
+    return { id: request.id, success: false, error: "Failed to start daemon. Run manually: bb-browser daemon" };
   }
 }
 
