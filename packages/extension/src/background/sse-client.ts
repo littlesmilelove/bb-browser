@@ -69,7 +69,7 @@ export class SSEClient {
         return;
       }
 
-      console.error('[SSEClient] Connection error:', error);
+      // daemon 未启动时静默重连，不打 error 日志
       this.isConnectedFlag = false;
       this.reconnect();
     }
@@ -169,17 +169,9 @@ export class SSEClient {
    * 指数退避重连
    */
   private reconnect(): void {
-    if (this.reconnectAttempts >= SSE_MAX_RECONNECT_ATTEMPTS) {
-      console.error('[SSEClient] Max reconnection attempts reached');
-      return;
-    }
-
     this.reconnectAttempts++;
-    const delay = SSE_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1);
-
-    console.log(
-      `[SSEClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})`
-    );
+    // 指数退避，上限 60 秒，永不放弃
+    const delay = Math.min(SSE_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1), 60000);
 
     setTimeout(() => {
       this.disconnect();
