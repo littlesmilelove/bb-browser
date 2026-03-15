@@ -52,11 +52,6 @@ bb-browser flips this: **instead of forcing websites to provide machine interfac
 npm install -g bb-browser
 ```
 
-### Chrome Extension
-
-1. Download from [Releases](https://github.com/epiral/bb-browser/releases/latest)
-2. Unzip → `chrome://extensions/` → Developer Mode → Load unpacked
-
 ### Use
 
 ```bash
@@ -64,6 +59,24 @@ bb-browser site update        # pull community adapters
 bb-browser site recommend     # see which adapters match your browsing habits
 bb-browser site zhihu/hot     # go
 ```
+
+### OpenClaw (no extension needed)
+
+If you use [OpenClaw](https://openclaw.ai), bb-browser runs directly through OpenClaw's built-in browser — no Chrome extension or daemon required:
+
+```bash
+bb-browser site reddit/hot --openclaw
+bb-browser site xueqiu/hot-stock 5 --openclaw --jq '.items[] | {name, changePercent}'
+```
+
+Skill on ClawHub: [bb-browser-openclaw](https://clawhub.ai/yan5xu/bb-browser-openclaw)
+
+### Chrome Extension (standalone mode)
+
+For use without OpenClaw (Claude Code MCP, standalone CLI):
+
+1. Download from [Releases](https://github.com/epiral/bb-browser/releases/latest)
+2. Unzip → `chrome://extensions/` → Developer Mode → Load unpacked
 
 ### MCP (Claude Code / Cursor)
 
