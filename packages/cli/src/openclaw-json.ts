@@ -8,6 +8,10 @@ interface ParseFailure {
   error: Error;
 }
 
+function buildPreview(raw: string): string {
+  return raw.length > 200 ? `${raw.slice(0, 200)}...` : raw;
+}
+
 function tryParseJson<T>(raw: string): ParseSuccess<T> | ParseFailure {
   try {
     return { ok: true, value: JSON.parse(raw) as T };
@@ -19,12 +23,38 @@ function tryParseJson<T>(raw: string): ParseSuccess<T> | ParseFailure {
   }
 }
 
+function tryParseLineSlices<T>(raw: string): ParseSuccess<T> | null {
+  const lines = raw.split(/\r?\n/);
+
+  for (let start = lines.length - 1; start >= 0; start -= 1) {
+    for (let end = lines.length; end > start; end -= 1) {
+      const candidate = lines.slice(start, end).join("\n").trim();
+      if (!candidate) {
+        continue;
+      }
+
+      const parsed = tryParseJson<T>(candidate);
+      if (parsed.ok) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
 function extractTopLevelJson(raw: string, start: number): string | null {
-  let depth = 0;
+  const opener = raw[start];
+  const expectedCloser = opener === "{" ? "}" : opener === "[" ? "]" : null;
+  if (!expectedCloser) {
+    return null;
+  }
+
+  const stack = [expectedCloser];
   let inString = false;
   let escaped = false;
 
-  for (let index = start; index < raw.length; index += 1) {
+  for (let index = start + 1; index < raw.length; index += 1) {
     const char = raw[index];
 
     if (inString) {
@@ -48,17 +78,17 @@ function extractTopLevelJson(raw: string, start: number): string | null {
     }
 
     if (char === "{" || char === "[") {
-      depth += 1;
+      stack.push(char === "{" ? "}" : "]");
       continue;
     }
 
     if (char === "}" || char === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        return raw.slice(start, index + 1);
-      }
-      if (depth < 0) {
+      const expected = stack.pop();
+      if (expected !== char) {
         return null;
+      }
+      if (stack.length === 0) {
+        return raw.slice(start, index + 1);
       }
     }
   }
@@ -77,7 +107,12 @@ export function parseOpenClawJson<T>(raw: string): T {
     return direct.value;
   }
 
-  for (let index = 0; index < trimmed.length; index += 1) {
+  const fromLines = tryParseLineSlices<T>(trimmed);
+  if (fromLines) {
+    return fromLines.value;
+  }
+
+  for (let index = trimmed.length - 1; index >= 0; index -= 1) {
     const char = trimmed[index];
     if (char !== "{" && char !== "[") {
       continue;
@@ -94,5 +129,5 @@ export function parseOpenClawJson<T>(raw: string): T {
     }
   }
 
-  throw new Error(`Failed to parse OpenClaw JSON output: ${direct.error.message}`);
+  throw new Error(`Failed to parse OpenClaw JSON output: ${direct.error.message}\nRaw (preview): ${buildPreview(trimmed)}`);
 }
